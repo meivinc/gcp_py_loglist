@@ -1,0 +1,5 @@
+google-cloud-logging
+datetime
+alive_progress
+google-cloud-resource-manager 
+tqdm
