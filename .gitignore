@@ -1,0 +1,6 @@
+debug.py
+*.csv
+env/
+
+
+.DS_Store

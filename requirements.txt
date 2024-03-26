@@ -3,3 +3,4 @@ datetime
 alive_progress
 google-cloud-resource-manager 
 tqdm
+google-cloud-storage

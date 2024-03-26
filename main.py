@@ -5,10 +5,11 @@ from datetime import datetime, timedelta
 from alive_progress import alive_bar
 from urllib.parse import unquote
 from google.cloud import resourcemanager_v3
+from google.cloud import storage
 import time
 
 
-def get_logging_entries(days,kind=None,type=None,apilog=None):
+def get_logging_entries(days,kind=None,type=None,apilog=None,severity_filter=None):
     client = logging.Client()
     #
 
@@ -22,9 +23,16 @@ def get_logging_entries(days,kind=None,type=None,apilog=None):
 
     # Define a filter to narrow down the logs within the specified time range
     filter_str = f'timestamp >= "{start_timestamp_str}" AND timestamp <= "{end_timestamp_str}"'
-    
+
+    # Add severity filter if provided
+    if severity_filter:
+        filter_str += f' AND severity >= "{severity_filter}"'
+
+    # Exclude logs with specific log name
+        filter_str += ' AND NOT logName:"cloud.googleapis.com%2Fipsec_events"'
+
     if "project" in type.lower():
-        resource="projects/" + str(kind).lower
+        resource="projects/" + str(kind)
     if "folder" in type.lower():
         resource="folders/" + str(kind)
     if "organizations" in type.lower():
@@ -38,13 +46,13 @@ def get_logging_entries(days,kind=None,type=None,apilog=None):
         )
         
     # Fields to extract from each log entry
-    fields_to_extract = ['severity', 'timestamp', 'method','@type','service']
+    fields_to_extract = ['insert_id','severity', 'timestamp', 'method','@type','service']
     #fields_to_extract = ['insert_id', 'severity', 'timestamp', 'method','@type','service']
 
     results = []
  
     for entry in entries:
-        if apilog >= 500: 
+        if apilog >= 1800: 
            apilog = 0
            print("taking a nap to avoid API issue..")
            time.sleep(60)
@@ -79,7 +87,7 @@ def get_logging_entries(days,kind=None,type=None,apilog=None):
             log_data['@type'] = entry.payload.get('@type') if entry.payload is not None else None
         except: 
             print ("error on id : " + entry.insert_id)
-            log_data['@type'] = entry.insert_id
+            log_data['@type'] = "None"
 
         # Extract "Level" and "Kind" from LogName
         log_name_parts = entry.log_name.split('/')
@@ -180,12 +188,12 @@ def scriptcalculation(start,end):
     formatted_time = "{:02}:{:02}:{:02}".format(int(hours), int(minutes), int(seconds))
     return formatted_time
 
-def logging_loop(object_type,object_kind,func_fulllog_count,func_aggregate_logs):
+def logging_loop(object_type,object_kind,func_fulllog_count,func_aggregate_logs,severity):
     with alive_bar(total=(len(object_kind)), title=f'Progress : {object_type} Parsing logs') as bar:
         print(f'=========  {object_type} FETCHING LOGS =========')
         for item in  object_kind:
             # print(prj)
-            logging_entries,func_aggregate_logs  = get_logging_entries(days,kind=item,type=object_type,apilog=func_aggregate_logs)
+            logging_entries,func_aggregate_logs  = get_logging_entries(days,kind=item,type=object_type,apilog=func_aggregate_logs,severity_filter=severity)
             export_to_csv(logging_entries, csv_filename)
             #print(f'Data exported to {csv_filename}')
             print(f'{object_type} :{item}, Number of logs parsed: {len(logging_entries)}')
@@ -193,9 +201,10 @@ def logging_loop(object_type,object_kind,func_fulllog_count,func_aggregate_logs)
             func_fulllog_count += len(logging_entries)
 
             bar()   
-        export_to_csv(logging_entries, csv_filename)
+        # export_to_csv(logging_entries, csv_filename)
+   ####     # upload_to_cloud_storage(csv_filename,bucket_name)
 
-    return func_fulllog_count,aggregate_logs
+    return func_fulllog_count,func_aggregate_logs
 
 def debug_cloudresource(input):
         print("======= RESOURCE MANAGER DEBUG MOD =======")        
@@ -211,13 +220,31 @@ def debug_cloudresource(input):
         for organization_id, org_display_name in zip(input['Organizations'], input.get('OrganizationDisplayNames', [])):
             print(f"  {organization_id} - {org_display_name}")
 
+def upload_to_cloud_storage(csv_filename, bucket_name):
+    # Initialize a Cloud Storage client
+    storage_client = storage.Client()
+
+    # Get the bucket
+    bucket = storage_client.get_bucket(bucket_name)
+
+    # Create a blob (object) in the bucket
+    blob = bucket.blob(csv_filename)
+
+    # Upload the CSV file to the Cloud Storage blob
+    blob.upload_from_filename(csv_filename)
+
+    print(f"File '{csv_filename}' uploaded to Cloud Storage bucket '{bucket_name}' with object name '{csv_filename}'.")
+
 
 if __name__ == "__main__":
     # Paremeters to set
     DebugMod = False
-    days = 1
+    days = 7
     csv_filename = 'logs_export.csv'
+    bucket_name = "bucket-python-export"
     start_time = datetime.utcnow()
+    severity="WARNING"
+
 
     # Retrieve Google resources for parsing logs
     google_cloud_resources = list_google_cloud_resources(debug=DebugMod)
@@ -229,16 +256,16 @@ if __name__ == "__main__":
     full_log_count = 0
 
 
-    # # Retrieve Project Structure log
-    full_logentries = logging_loop("project",(google_cloud_resources['Projects']),full_log_count,aggregate_logs)
-    full_log_count += len(full_logentries)
+    # # # Retrieve Project Structure log
+    full_logentries, aggregate_logs = logging_loop("project",(google_cloud_resources['Projects']),full_log_count,aggregate_logs,severity)
+    full_log_count += (full_logentries)
 
-    # Retrieve Folder Structure log
-    full_logentries, aggregate_logs = logging_loop("folder",(google_cloud_resources['Folders']),full_log_count,aggregate_logs)
-    full_log_count += len(full_logentries)
+    # # # Retrieve Folder Structure log
+    full_logentries, aggregate_logs = logging_loop("folder",(google_cloud_resources['Folders']),full_log_count,aggregate_logs,severity)
+    full_log_count += (full_logentries)
  
     # Retrieve Organization Structure log
-    full_logentries, aggregate_logs  = logging_loop("Organizations",(google_cloud_resources['Organizations']),full_log_count,aggregate_logs)
+    full_logentries, aggregate_logs  = logging_loop("Organizations",(google_cloud_resources['Organizations']),full_log_count,aggregate_logs,severity)
     full_log_count += full_logentries
 
 

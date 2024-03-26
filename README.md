@@ -58,7 +58,22 @@ Modify the script's parameters in `main.py` on your convenience :
 DebugMode = False  # Set to True for debugging
 days = 7  # Number of days for log retrieval
 csv_filename = "logs_inventory.csv"  # Name of the CSV file to be generated
+severity = None # Specify your severity level if needed 
 ```
+
+
+| Enum        | Severity Level | Description                                            |
+|-------------|-----------------|--------------------------------------------------------|
+| DEFAULT     | 0               | The log entry has no assigned severity level.          |
+| DEBUG       | 100             | Debug or trace information.                            |
+| INFO        | 200             | Routine information, such as ongoing status or performance. |
+| NOTICE      | 300             | Normal but significant events, such as start up, shut down, or a configuration change. |
+| WARNING     | 400             | Warning events might cause problems.                   |
+| ERROR       | 500             | Error events are likely to cause problems.             |
+| CRITICAL    | 600             | Critical events cause more severe problems or outages. |
+| ALERT       | 700             | A person must take action immediately.                 |
+| EMERGENCY   | 800             | One or more systems are unusable.                      |
+
 
 ### Functions
 
